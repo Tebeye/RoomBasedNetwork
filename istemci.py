@@ -14,32 +14,20 @@ args = parser.parse_args()
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client_socket.connect((HOST, PORT))
 
-# Oda kimliğini sunucuya gönder
+# Oda kimliği ve oturum kimliğini sunucudan al
 room_id = ""
+session_id = ""
 
 if args.uuid:
-    room_id = args.uuid
+    room_id = args.uuid.split(',')
 else:
-    # Sunucudan oda kimliği al
-    room_id = client_socket.recv(1024).decode('utf-8')
-
-print(f"Oda kimligim: {room_id}")
+    # Sunucudan oda kimliği ve oturum kimliğini al
+    response = client_socket.recv(1024).decode('utf-8')
+    room_id, session_id = response.split(',')
+    print(f"Oda kimligim: {room_id}, Oturum kimligim: {session_id}")
 
 while True:
     message = input()
     client_socket.send(message.encode('utf-8'))
 
 client_socket.close()
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='İstemci için UUID belirleme.')
-    parser.add_argument('-uuid', type=str, help='İstemci tarafından kullanılacak UUID')
-    args = parser.parse_args()
-
-    # Sunucu tarafından verilen UUID'yi veya otomatik olarak oluşturulan UUID'yi al
-    if args.uuid:
-        room_id = args.uuid
-    else:
-        room_id = input("Oda kimliğiniz: ")
-
-    main()

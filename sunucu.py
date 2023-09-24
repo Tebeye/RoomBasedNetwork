@@ -2,6 +2,9 @@ import socket
 import argparse
 import uuid
 import threading
+import Game
+import Client
+
 # Komut satırı argümanlarını işleme
 parser = argparse.ArgumentParser(description='Sunucu için UUID belirleme.')
 parser.add_argument('-uuid', type=str, help='Sunucu tarafından kullanılacak UUID')
@@ -15,36 +18,35 @@ PORT = 12345
 ports = {}
 # İstemcileri saklamak için bir sözlük
 clients = {}
-
-# Ortak UUID'ler ve bunların bağlantı noktalarını saklamak için bir sözlük
-common_uuids = {}
-
-def handle_client(client_socket, room_id):
+def handle_client(client_socket, room_id, session_id):
     while True:
         try:
             data = client_socket.recv(1024)
-            for aaa in clients:
-                print(f"Clients: {clients[aaa]}")
             if not data:
                 print(f"Istemci {room_id} ayrildi.")
-                del clients[room_id]
-                del ports[client_socket]
+                del clients[room_id][session_id]
+                if not clients[room_id]:
+                    del clients[room_id]
                 break
-            print(f"Mesaj alindi odasi {room_id}: {data.decode('utf-8')}")
+            print(f"Mesaj alindi odasi {room_id}, oturum {session_id}: {data.decode('utf-8')}")
 
             # Ortak UUID'ye sahip istemcilere mesajı ilet
-            if room_id in common_uuids:
-                for other_room_id, other_client_socket in clients.items():
-                    if other_room_id != room_id:
+            if room_id in clients:
+                for other_session_id, other_client_socket in clients[room_id].items():
+                    if other_session_id != session_id:
                         try:
-                            other_client_socket['socket'].send(data)
+                            other_client_socket.send(data)
                         except Exception as e:
                             print(f"Hata: {str(e)}")
-                            del clients[other_room_id]
+                            # Hata durumunda bağlantıları temizle
+                            del clients[room_id][other_session_id]
+                            if not clients[room_id]:
+                                del clients[room_id]
         except Exception as e:
             print(f"Hata: {str(e)}")
-            del clients[room_id]
-            del ports[client_socket]
+            del clients[room_id][session_id]
+            if not clients[room_id]:
+                del clients[room_id]
             break
 
 # Sunucu başlatma ve istemci bağlantılarını kabul etme
@@ -56,39 +58,35 @@ def main():
 
     while True:
         client_socket, addr = server.accept()
-        print(f"Yeni istemci baglandi: {addr} ({ports.get(client_socket)})")
+        print(f"Yeni istemci baglandi: {addr}")
         
         # İstemci tarafından sağlanan UUID veya sunucu tarafından otomatik olarak oluşturulan UUID
         if args.uuid:
             room_id = args.uuid
+    
         else:
             room_id = str(uuid.uuid4())
         
         # İstemcinin bağlandığı bağlantı noktasını al
         _, client_port = addr
-        # Bağlantı noktasına ait oda kimliğini güncelle
-        ports[client_socket] = room_id
+        # Benzersiz bir oturum kimliği (session_id) oluştur
+        session_id = str(uuid.uuid4())
         
-        # Ortak UUID'ler listesine ekle (eğer istemci argüman olarak -uuid verirse)
-        if args.uuid and args.uuid in common_uuids:
-            common_uuids[args.uuid].append(room_id)
-        else:
-            common_uuids[room_id] = [room_id]
+        # Oda kimliği altında oturumları sakla
+        if room_id not in clients:
+            clients[room_id] = {}
         
-        clients[room_id] = {
-            "socket": client_socket,
-            "room_id": room_id
-        }
+        clients[room_id][session_id] = client_socket
         
-        # İstemciye oda kimliğini gönder
-        client_socket.send(f"Oda kimliginiz: {room_id}".encode())
+        # İstemciye oda kimliği ve oturum kimliğini gönder
+        client_socket.send(f"Oda kimliginiz: {room_id}, Oturum kimliginiz: {session_id}".encode())
         
-        client_handler = threading.Thread(target=handle_client, args=(client_socket, room_id))
+        client_handler = threading.Thread(target=handle_client, args=(client_socket, room_id, session_id))
         client_handler.start()
 
 
 if __name__ == "__main__":
-        # İstemci tarafından verilen UUID'yi al
+    # İstemci tarafından verilen UUID'yi al
     parser = argparse.ArgumentParser(description='Sunucu için UUID belirleme.')
     parser.add_argument('-uuid', type=str, help='Sunucu tarafından kullanılacak UUID')
     args = parser.parse_args()
